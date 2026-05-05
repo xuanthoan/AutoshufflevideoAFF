@@ -153,6 +153,12 @@ def fallback_segments(duration: float) -> List[Tuple[float, float]]:
     return segs
 
 
+def has_audio_stream(ffprobe_bin: str, video: Path) -> bool:
+    cmd = [ffprobe_bin, "-v", "error", "-select_streams", "a", "-show_entries", "stream=index", "-of", "csv=p=0", str(video)]
+    out = subprocess.check_output(cmd, text=True).strip()
+    return bool(out)
+
+
 def ffprobe_duration(ffprobe_bin: str, video: Path) -> float:
     cmd = [ffprobe_bin, "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", str(video)]
     return float(subprocess.check_output(cmd, text=True).strip())
@@ -247,7 +253,11 @@ class Worker(QThread):
         with tempfile.TemporaryDirectory(prefix="autosf_") as td:
             td = Path(td)
             audio = td / "audio.aac"
-            self.runner.run([self.ffmpeg_bin, "-y", "-i", str(video), "-vn", "-acodec", "copy", str(audio)], step_name="Tách audio")
+            has_audio = has_audio_stream(self.ffprobe_bin, video)
+            if has_audio:
+                self.runner.run([self.ffmpeg_bin, "-y", "-i", str(video), "-vn", "-acodec", "copy", str(audio)], step_name="Tách audio")
+            else:
+                self.log.emit("ℹ Video không có âm thanh, bỏ qua bước xử lý audio")
 
             scenes = detect_scenes(video, self.settings.scene_sensitivity)
             if len(scenes) <= 1:
@@ -315,10 +325,13 @@ class Worker(QThread):
                 "-vsync", "2", "-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-g", "1", "-pix_fmt", "yuv420p", "-shortest", str(composed)
             ], step_name="Composite video + ảnh + fade")
 
-            try:
-                self.runner.run([self.ffmpeg_bin, "-y", "-i", str(composed), "-i", str(audio), "-c:v", "copy", "-c:a", "aac", "-shortest", str(out_final)], step_name="Gắn lại audio")
-            except Exception:
-                self.runner.run([self.ffmpeg_bin, "-y", "-i", str(composed), "-i", str(audio), "-c:v", "libx264", "-c:a", "aac", "-shortest", str(out_final)], step_name="Gắn lại audio (fallback)")
+            if has_audio:
+                try:
+                    self.runner.run([self.ffmpeg_bin, "-y", "-i", str(composed), "-i", str(audio), "-c:v", "copy", "-c:a", "aac", "-shortest", str(out_final)], step_name="Gắn lại audio")
+                except Exception:
+                    self.runner.run([self.ffmpeg_bin, "-y", "-i", str(composed), "-i", str(audio), "-c:v", "libx264", "-c:a", "aac", "-shortest", str(out_final)], step_name="Gắn lại audio (fallback)")
+            else:
+                self.runner.run([self.ffmpeg_bin, "-y", "-i", str(composed), "-c:v", "copy", "-an", str(out_final)], step_name="Xuất video không audio")
 
 
 class MainWindow(QMainWindow):
@@ -544,7 +557,7 @@ CÁCH TẢI ffmpeg.exe / ffprobe.exe:
 3) Giải nén và copy ffmpeg.exe + ffprobe.exe vào cùng thư mục với main.py hoặc file .exe của phần mềm.
 
 QUY TRÌNH XỬ LÝ:
-- Tách audio từ video đầu vào.
+- Kiểm tra stream audio: nếu có thì tách audio, nếu không thì bỏ qua xử lý audio.
 - Phát hiện scene (hoặc fallback chia đoạn 3-5 giây).
 - Cắt segment, giữ segment đầu và xáo trộn các segment còn lại.
 - Ghép lại video đã shuffle.
