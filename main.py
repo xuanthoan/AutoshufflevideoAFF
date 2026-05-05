@@ -29,6 +29,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
     QCheckBox,
+    QStyle,
 )
 
 try:
@@ -85,15 +86,19 @@ class ProcessRunner:
             except Exception:
                 pass
 
-    def run(self, cmd: List[str], cwd: Optional[Path] = None):
+    def run(self, cmd: List[str], cwd: Optional[Path] = None, step_name: Optional[str] = None):
         if self.stop_flag():
             raise RuntimeError("Đã dừng bởi người dùng")
-        self.log_cb("$ " + " ".join(shlex.quote(x) for x in cmd))
+        if step_name:
+            self.log_cb(f"▶ {step_name}")
         p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, cwd=str(cwd) if cwd else None)
         self.running.append(p)
+        lines = []
         try:
             for line in p.stdout:
-                self.log_cb(line.rstrip())
+                if len(lines) > 30:
+                    lines.pop(0)
+                lines.append(line.rstrip())
                 if self.stop_flag() and p.poll() is None:
                     p.kill()
                     raise RuntimeError("Đã dừng bởi người dùng")
@@ -102,7 +107,8 @@ class ProcessRunner:
             if p in self.running:
                 self.running.remove(p)
         if code != 0:
-            raise RuntimeError(f"Lệnh lỗi: {' '.join(cmd)}")
+            tail = "\n".join(lines[-8:])
+            raise RuntimeError(f"Lệnh lỗi: {' '.join(cmd)}\n{tail}")
 
 
 def ffprobe_size(ffprobe_bin: str, video: Path) -> Tuple[int, int]:
@@ -206,7 +212,7 @@ class Worker(QThread):
         with tempfile.TemporaryDirectory(prefix="autosf_") as td:
             td = Path(td)
             audio = td / "audio.aac"
-            self.runner.run([self.ffmpeg_bin, "-y", "-i", str(video), "-vn", "-acodec", "copy", str(audio)])
+            self.runner.run([self.ffmpeg_bin, "-y", "-i", str(video), "-vn", "-acodec", "copy", str(audio)], step_name="Tách audio")
 
             scenes = detect_scenes(video, self.settings.scene_sensitivity)
             if len(scenes) <= 1:
@@ -216,6 +222,7 @@ class Worker(QThread):
             seg_dir = td / "segs"
             seg_dir.mkdir()
             segs = []
+            self.log.emit(f"▶ Cắt {len(scenes)} segment")
             for idx, (s, e) in enumerate(scenes):
                 seg = seg_dir / f"seg_{idx:04d}.mp4"
                 self.runner.run([self.ffmpeg_bin, "-y", "-ss", f"{s:.3f}", "-to", f"{e:.3f}", "-i", str(video), "-c", "copy", str(seg)])
@@ -230,7 +237,7 @@ class Worker(QThread):
             lst = td / "concat.txt"
             lst.write_text("\n".join(f"file '{p.as_posix()}'" for p in segs), encoding="utf-8")
             shuffled = td / "shuffled.mp4"
-            self.runner.run([self.ffmpeg_bin, "-y", "-f", "concat", "-safe", "0", "-i", str(lst), "-c", "copy", str(shuffled)])
+            self.runner.run([self.ffmpeg_bin, "-y", "-f", "concat", "-safe", "0", "-i", str(lst), "-c", "copy", str(shuffled)], step_name="Ghép segment")
 
             W, H = ffprobe_size(self.ffprobe_bin, shuffled)
             ih = int(round(self.settings.image_height_percent / 100.0 * H))
@@ -264,12 +271,12 @@ class Worker(QThread):
                 "-filter_complex", fc,
                 "-map", "[outv]", "-t", f"{ffprobe_duration(self.ffprobe_bin, shuffled):.3f}",
                 "-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-pix_fmt", "yuv420p", "-shortest", str(composed)
-            ])
+            ], step_name="Composite video + ảnh + fade")
 
             try:
-                self.runner.run([self.ffmpeg_bin, "-y", "-i", str(composed), "-i", str(audio), "-c:v", "copy", "-c:a", "aac", "-shortest", str(out_final)])
+                self.runner.run([self.ffmpeg_bin, "-y", "-i", str(composed), "-i", str(audio), "-c:v", "copy", "-c:a", "aac", "-shortest", str(out_final)], step_name="Gắn lại audio")
             except Exception:
-                self.runner.run([self.ffmpeg_bin, "-y", "-i", str(composed), "-i", str(audio), "-c:v", "libx264", "-c:a", "aac", "-shortest", str(out_final)])
+                self.runner.run([self.ffmpeg_bin, "-y", "-i", str(composed), "-i", str(audio), "-c:v", "libx264", "-c:a", "aac", "-shortest", str(out_final)], step_name="Gắn lại audio (fallback)")
 
 
 class MainWindow(QMainWindow):
@@ -347,6 +354,18 @@ class MainWindow(QMainWindow):
         v.addWidget(self.progress); v.addWidget(self.log)
 
         self.setCentralWidget(w)
+
+        st = self.style()
+        self.btn_add_video.setIcon(st.standardIcon(QStyle.SP_FileDialogNewFolder))
+        self.btn_remove_video.setIcon(st.standardIcon(QStyle.SP_TrashIcon))
+        self.btn_add_image.setIcon(st.standardIcon(QStyle.SP_FileIcon))
+        self.btn_remove_image.setIcon(st.standardIcon(QStyle.SP_TrashIcon))
+        self.btn_pick_output.setIcon(st.standardIcon(QStyle.SP_DirOpenIcon))
+        self.btn_start.setIcon(st.standardIcon(QStyle.SP_MediaPlay))
+        self.btn_stop.setIcon(st.standardIcon(QStyle.SP_MediaPause))
+        self.btn_kill.setIcon(st.standardIcon(QStyle.SP_BrowserStop))
+        self.btn_output.setIcon(st.standardIcon(QStyle.SP_DialogOpenButton))
+        self.btn_help.setIcon(st.standardIcon(QStyle.SP_MessageBoxInformation))
 
         self.btn_add_video.clicked.connect(self.add_video)
         self.btn_remove_video.clicked.connect(self.remove_videos)
