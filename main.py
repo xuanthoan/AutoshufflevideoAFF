@@ -248,20 +248,23 @@ class Worker(QThread):
             composed = td / "composed.mp4"
             fc = (
                 f"[1:v]scale={W}:-1,crop={W}:{ih}:0:{crop_y}[img];"
-                f"[0:v]setpts=PTS-STARTPTS[v];"
+                f"[0:v]setpts=PTS-STARTPTS,split=2[v_main_src][v_fade_src];"
                 f"color=c=black:s={W}x{H}:d=1[base];"
                 f"[base][img]overlay=0:{image_top}[base_img];"
-                f"[base][v]overlay=0:{offset_y}[vp];"
-                f"[vp]crop={W}:{main_video_h}:0:0[v_main];"
+                f"[base][v_main_src]overlay=0:{offset_y}[vp_main];"
+                f"[vp_main]crop={W}:{main_video_h}:0:0[v_main];"
                 f"[base_img][v_main]overlay=0:0[tmp];"
-                f"[vp]crop={W}:{max(1,ov)}:0:{image_top},format=yuva420p,geq=lum='p(X,Y)':a='{alpha}'[fade];"
+                f"[base][v_fade_src]overlay=0:{offset_y}[vp_fade];"
+                f"[vp_fade]crop={W}:{max(1,ov)}:0:{image_top},format=yuv420p[fade_crop];"
+                f"color=white:s={W}x{max(1,ov)}:d=1,format=gray,geq=lum='{alpha}'[mask_gray];"
+                f"[fade_crop][mask_gray]alphamerge[fade];"
                 f"[tmp][fade]overlay=0:{fade_start}[outv]"
             )
             self.runner.run([
-                self.ffmpeg_bin, "-y", "-i", str(shuffled), "-loop", "1", "-i", str(image),
+                self.ffmpeg_bin, "-y", "-threads", "0", "-filter_threads", "0", "-i", str(shuffled), "-loop", "1", "-i", str(image),
                 "-filter_complex", fc,
                 "-map", "[outv]", "-t", f"{ffprobe_duration(self.ffprobe_bin, shuffled):.3f}",
-                "-c:v", "libx264", "-pix_fmt", "yuv420p", str(composed)
+                "-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-pix_fmt", "yuv420p", "-shortest", str(composed)
             ])
 
             try:
