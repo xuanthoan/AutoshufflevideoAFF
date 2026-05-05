@@ -201,9 +201,8 @@ class Worker(QThread):
         image = Path(random.choice(self.images))
         stem = video.stem
         safe_stem = "".join(ch if ch.isalnum() or ch in "-_" else "_" for ch in stem).strip("_") or "video"
-        video_outdir = self.outdir / safe_stem
-        video_outdir.mkdir(parents=True, exist_ok=True)
-        out_final = video_outdir / f"{safe_stem}_processed.mp4"
+        self.outdir.mkdir(parents=True, exist_ok=True)
+        out_final = self.outdir / f"{safe_stem}_processed.mp4"
         with tempfile.TemporaryDirectory(prefix="autosf_") as td:
             td = Path(td)
             audio = td / "audio.aac"
@@ -276,7 +275,7 @@ class Worker(QThread):
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Auto Video Shuffle + Image Compositor")
+        self.setWindowTitle("Phần mềm Auto Video Shuffle + Image Compositor")
         self.settings = QSettings("autoshuffle", "app")
         self.worker = None
         self.ffmpeg_bin = ""
@@ -338,7 +337,8 @@ class MainWindow(QMainWindow):
         self.btn_stop = QPushButton("Dừng")
         self.btn_kill = QPushButton("Kết thúc")
         self.btn_output = QPushButton("Mở thư mục output")
-        for b in [self.btn_pick_output, self.btn_start, self.btn_stop, self.btn_kill, self.btn_output]:
+        self.btn_help = QPushButton("Hướng dẫn sử dụng")
+        for b in [self.btn_pick_output, self.btn_start, self.btn_stop, self.btn_kill, self.btn_output, self.btn_help]:
             action_row.addWidget(b)
         v.addLayout(action_row)
 
@@ -357,6 +357,7 @@ class MainWindow(QMainWindow):
         self.btn_stop.clicked.connect(self.stop_run)
         self.btn_kill.clicked.connect(self.kill_now)
         self.btn_output.clicked.connect(self.open_output)
+        self.btn_help.clicked.connect(self.show_help)
 
     def append_log(self, text):
         self.log.append(text)
@@ -456,6 +457,32 @@ class MainWindow(QMainWindow):
         self.append_log(msg)
         if self.auto_open.isChecked():
             self.open_output()
+
+
+    def show_help(self):
+        release_date = "2026-05-05"
+        guide = f"""PHẦN MỀM AUTO VIDEO SHUFFLE + IMAGE COMPOSITOR
+Phiên bản: v1.0
+Tác giả: Nguyễn Xuân Thoán
+Ngày phát hành: {release_date}
+
+HƯỚNG DẪN SỬ DỤNG:
+1) Bấm 'Thêm video' để chọn một hoặc nhiều file video.
+2) Bấm 'Thêm ảnh' để chọn danh sách ảnh dùng để compositing.
+3) (Tuỳ chọn) Bấm 'Chọn output' để đổi thư mục xuất.
+4) Thiết lập thông số: độ nhạy scene, crop ảnh, chiều cao ảnh, overlap, kiểu fade.
+5) Bấm 'Bắt đầu' để chạy batch. Có thể bấm 'Dừng' hoặc 'Kết thúc' để ngắt tiến trình.
+6) Bấm 'Mở thư mục output' để mở thư mục chứa video đã xử lý.
+
+QUY TRÌNH XỬ LÝ:
+- Tách audio từ video đầu vào.
+- Phát hiện scene (hoặc fallback chia đoạn 3-5 giây).
+- Cắt segment, giữ segment đầu và xáo trộn các segment còn lại.
+- Ghép lại video đã shuffle.
+- Composite video + ảnh + overlap + fade mask theo thông số.
+- Gắn lại audio và xuất file hoàn chỉnh.
+"""
+        QMessageBox.information(self, "Hướng dẫn sử dụng", guide)
 
     def open_output(self):
         path = self.last_output_used or self.get_output()
