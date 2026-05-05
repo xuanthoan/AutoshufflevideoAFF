@@ -289,24 +289,31 @@ class MainWindow(QMainWindow):
         v = QVBoxLayout(w)
 
         row = QHBoxLayout()
+        video_col = QVBoxLayout()
+        image_col = QVBoxLayout()
+
         self.video_list = QListWidget()
         self.image_list = QListWidget()
-        row.addWidget(self.video_list)
-        row.addWidget(self.image_list)
-        v.addLayout(row)
+        video_col.addWidget(self.video_list)
+        image_col.addWidget(self.image_list)
 
-        btn = QHBoxLayout()
+        video_btns = QHBoxLayout()
         self.btn_add_video = QPushButton("Thêm video")
+        self.btn_remove_video = QPushButton("Xoá video")
+        video_btns.addWidget(self.btn_add_video)
+        video_btns.addWidget(self.btn_remove_video)
+        video_col.addLayout(video_btns)
+
+        image_btns = QHBoxLayout()
         self.btn_add_image = QPushButton("Thêm ảnh")
-        self.btn_remove = QPushButton("Xóa")
-        self.btn_start = QPushButton("Bắt đầu")
-        self.btn_stop = QPushButton("Dừng")
-        self.btn_kill = QPushButton("Kết thúc")
-        self.btn_pick_output = QPushButton("Chọn output (tuỳ chọn)")
-        self.btn_output = QPushButton("Mở thư mục output")
-        for b in [self.btn_add_video, self.btn_add_image, self.btn_remove, self.btn_pick_output, self.btn_start, self.btn_stop, self.btn_kill, self.btn_output]:
-            btn.addWidget(b)
-        v.addLayout(btn)
+        self.btn_remove_image = QPushButton("Xoá ảnh")
+        image_btns.addWidget(self.btn_add_image)
+        image_btns.addWidget(self.btn_remove_image)
+        image_col.addLayout(image_btns)
+
+        row.addLayout(video_col)
+        row.addLayout(image_col)
+        v.addLayout(row)
 
         grid = QGridLayout()
         self.scene_spin = QDoubleSpinBox(); self.scene_spin.setRange(1, 100); self.scene_spin.setValue(27)
@@ -325,6 +332,16 @@ class MainWindow(QMainWindow):
         grid.addWidget(self.auto_open, 2, 2, 1, 2)
         v.addLayout(grid)
 
+        action_row = QHBoxLayout()
+        self.btn_pick_output = QPushButton("Chọn output (tuỳ chọn)")
+        self.btn_start = QPushButton("Bắt đầu")
+        self.btn_stop = QPushButton("Dừng")
+        self.btn_kill = QPushButton("Kết thúc")
+        self.btn_output = QPushButton("Mở thư mục output")
+        for b in [self.btn_pick_output, self.btn_start, self.btn_stop, self.btn_kill, self.btn_output]:
+            action_row.addWidget(b)
+        v.addLayout(action_row)
+
         self.progress = QProgressBar()
         self.log = QTextEdit(); self.log.setReadOnly(True)
         v.addWidget(self.progress); v.addWidget(self.log)
@@ -332,8 +349,9 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(w)
 
         self.btn_add_video.clicked.connect(self.add_video)
+        self.btn_remove_video.clicked.connect(self.remove_videos)
         self.btn_add_image.clicked.connect(self.add_image)
-        self.btn_remove.clicked.connect(self.remove_items)
+        self.btn_remove_image.clicked.connect(self.remove_images)
         self.btn_pick_output.clicked.connect(self.pick_output_folder)
         self.btn_start.clicked.connect(self.start_run)
         self.btn_stop.clicked.connect(self.stop_run)
@@ -353,13 +371,21 @@ class MainWindow(QMainWindow):
         for f in files:
             self.image_list.addItem(f)
 
-    def remove_items(self):
-        selected = self.video_list.selectedItems() + self.image_list.selectedItems()
+    def remove_videos(self):
+        selected = self.video_list.selectedItems()
         if selected:
             for it in selected:
-                it.listWidget().takeItem(it.listWidget().row(it))
+                self.video_list.takeItem(self.video_list.row(it))
             return
-        self.video_list.clear(); self.image_list.clear()
+        self.video_list.clear()
+
+    def remove_images(self):
+        selected = self.image_list.selectedItems()
+        if selected:
+            for it in selected:
+                self.image_list.takeItem(self.image_list.row(it))
+            return
+        self.image_list.clear()
 
     def get_output(self):
         p = self.settings.value("last_openable_output", "", str)
