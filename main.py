@@ -596,6 +596,7 @@ QUY TRÌNH XỬ LÝ:
 - Phát hiện scene (hoặc fallback chia đoạn 3-5 giây).
 - Cắt segment, giữ segment đầu và xáo trộn các segment còn lại.
 - Ghép lại video đã shuffle.
+- Chuẩn hoá timestamp video (setpts + genpts) để đồng bộ timeline.
 - Composite video + ảnh + overlap + fade mask theo thông số.
 - Gắn lại audio và xuất file hoàn chỉnh.
 """
