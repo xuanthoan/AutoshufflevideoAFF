@@ -29,3 +29,9 @@ pyinstaller --noconfirm --onedir --windowed main.py
 ```
 
 Sau khi build, copy thêm `ffmpeg.exe` + `ffprobe.exe` vào thư mục phát hành.
+
+
+## Output
+
+- Nếu không chọn output, app tự tạo `output_processed`.
+- Mỗi video sẽ được xuất vào **sub-folder riêng** theo tên video để tránh trùng file khi chạy batch.

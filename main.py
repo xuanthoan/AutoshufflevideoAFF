@@ -1,14 +1,11 @@
 import json
-import math
 import os
 import random
-import shlex
 import shutil
-import signal
+import shlex
 import subprocess
 import sys
 import tempfile
-import uuid
 from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Optional, Tuple
@@ -44,6 +41,24 @@ except Exception:
 
 VIDEO_EXTS = {".mp4", ".mov", ".avi", ".mkv"}
 IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp", ".bmp"}
+
+
+def resolve_tool_binary(tool_name: str) -> str:
+    candidates = []
+    exe_name = f"{tool_name}.exe" if os.name == "nt" else tool_name
+    base = Path(sys.argv[0]).resolve().parent
+    candidates.append(base / exe_name)
+    candidates.append(Path.cwd() / exe_name)
+    for c in candidates:
+        if c.exists():
+            return str(c)
+    found = shutil.which(tool_name)
+    if found:
+        return found
+    found_exe = shutil.which(exe_name)
+    if found_exe:
+        return found_exe
+    raise FileNotFoundError(f"Không tìm thấy {exe_name}. Hãy đặt cạnh file chạy hoặc thêm vào PATH.")
 
 
 @dataclass
@@ -185,8 +200,10 @@ class Worker(QThread):
             raise RuntimeError("Chưa có ảnh")
         image = Path(random.choice(self.images))
         stem = video.stem
-        out_final = self.outdir / f"{stem}_processed.mp4"
-        self.outdir.mkdir(parents=True, exist_ok=True)
+        safe_stem = "".join(ch if ch.isalnum() or ch in "-_" else "_" for ch in stem).strip("_") or "video"
+        video_outdir = self.outdir / safe_stem
+        video_outdir.mkdir(parents=True, exist_ok=True)
+        out_final = video_outdir / f"{safe_stem}_processed.mp4"
         with tempfile.TemporaryDirectory(prefix="autosf_") as td:
             td = Path(td)
             audio = td / "audio.aac"
@@ -256,8 +273,9 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("Auto Video Shuffle + Image Compositor")
         self.settings = QSettings("autoshuffle", "app")
         self.worker = None
-        self.ffmpeg_bin = str(Path("ffmpeg.exe") if Path("ffmpeg.exe").exists() else "ffmpeg")
-        self.ffprobe_bin = str(Path("ffprobe.exe") if Path("ffprobe.exe").exists() else "ffprobe")
+        self.ffmpeg_bin = ""
+        self.ffprobe_bin = ""
+        self.last_output_used = ""
         self.setup_ui()
 
     def setup_ui(self):
@@ -345,6 +363,9 @@ class MainWindow(QMainWindow):
 
     def start_run(self):
         videos = [self.video_list.item(i).text() for i in range(self.video_list.count())]
+        if self.worker and self.worker.isRunning():
+            QMessageBox.information(self, "Đang chạy", "Batch đang chạy, vui lòng dừng trước khi chạy mới")
+            return
         images = [self.image_list.item(i).text() for i in range(self.image_list.count())]
         if not videos:
             QMessageBox.warning(self, "Thiếu dữ liệu", "Bạn chưa thêm video")
@@ -356,6 +377,15 @@ class MainWindow(QMainWindow):
         if not outdir:
             outdir = self.get_output()
         self.settings.setValue("last_openable_output", outdir)
+        self.last_output_used = outdir
+        try:
+            self.ffmpeg_bin = resolve_tool_binary("ffmpeg")
+            self.ffprobe_bin = resolve_tool_binary("ffprobe")
+        except FileNotFoundError as e:
+            QMessageBox.critical(self, "Thiếu công cụ", str(e))
+            self.append_log(f"[LỖI] {e}")
+            return
+
         if self.ov_spin.value() > self.ih_spin.value():
             QMessageBox.warning(self, "Sai cấu hình", "Overlap (%) phải <= Chiều cao ảnh (%)")
             return
@@ -389,7 +419,7 @@ class MainWindow(QMainWindow):
             self.open_output()
 
     def open_output(self):
-        path = self.get_output()
+        path = self.last_output_used or self.get_output()
         QDesktopServices.openUrl(QUrl.fromLocalFile(path))
 
 
