@@ -241,9 +241,7 @@ class Worker(QThread):
             offset_y = -(H - visible_video_total)
             image_top = H - ih
             fade_start = image_top
-            source_main_y = max(0, int(-offset_y))
             main_video_h = max(1, int(visible_video_total - ov))
-            source_y = max(0, int(image_top - offset_y))
             alpha = fade_alpha_expr(self.settings.fade_curve, max(1, ov))
             crop_y = y_for_focus(self.settings.image_focus)
 
@@ -253,9 +251,10 @@ class Worker(QThread):
                 f"[0:v]setpts=PTS-STARTPTS[v];"
                 f"color=c=black:s={W}x{H}:d=1[base];"
                 f"[base][img]overlay=0:{image_top}[base_img];"
-                f"[v]crop={W}:{main_video_h}:0:{source_main_y}[v_main];"
+                f"[base][v]overlay=0:{offset_y}[vp];"
+                f"[vp]crop={W}:{main_video_h}:0:0[v_main];"
                 f"[base_img][v_main]overlay=0:0[tmp];"
-                f"[v]crop={W}:{max(1,ov)}:0:{source_y},format=yuva420p,geq=lum='p(X,Y)':a='{alpha}'[fade];"
+                f"[vp]crop={W}:{max(1,ov)}:0:{image_top},format=yuva420p,geq=lum='p(X,Y)':a='{alpha}'[fade];"
                 f"[tmp][fade]overlay=0:{fade_start}[outv]"
             )
             self.runner.run([
@@ -300,8 +299,9 @@ class MainWindow(QMainWindow):
         self.btn_start = QPushButton("Bắt đầu")
         self.btn_stop = QPushButton("Dừng")
         self.btn_kill = QPushButton("Kết thúc")
+        self.btn_pick_output = QPushButton("Chọn output (tuỳ chọn)")
         self.btn_output = QPushButton("Mở thư mục output")
-        for b in [self.btn_add_video, self.btn_add_image, self.btn_remove, self.btn_start, self.btn_stop, self.btn_kill, self.btn_output]:
+        for b in [self.btn_add_video, self.btn_add_image, self.btn_remove, self.btn_pick_output, self.btn_start, self.btn_stop, self.btn_kill, self.btn_output]:
             btn.addWidget(b)
         v.addLayout(btn)
 
@@ -331,6 +331,7 @@ class MainWindow(QMainWindow):
         self.btn_add_video.clicked.connect(self.add_video)
         self.btn_add_image.clicked.connect(self.add_image)
         self.btn_remove.clicked.connect(self.remove_items)
+        self.btn_pick_output.clicked.connect(self.pick_output_folder)
         self.btn_start.clicked.connect(self.start_run)
         self.btn_stop.clicked.connect(self.stop_run)
         self.btn_kill.clicked.connect(self.kill_now)
@@ -365,6 +366,13 @@ class MainWindow(QMainWindow):
         d.mkdir(exist_ok=True)
         return str(d)
 
+    def pick_output_folder(self):
+        chosen = QFileDialog.getExistingDirectory(self, "Chọn thư mục output", self.get_output())
+        if chosen:
+            self.settings.setValue("last_openable_output", chosen)
+            self.last_output_used = chosen
+            self.append_log(f"Đã chọn output: {chosen}")
+
     def start_run(self):
         videos = [self.video_list.item(i).text() for i in range(self.video_list.count())]
         if self.worker and self.worker.isRunning():
@@ -377,9 +385,7 @@ class MainWindow(QMainWindow):
         if not images:
             QMessageBox.warning(self, "Thiếu dữ liệu", "Bạn chưa thêm ảnh")
             return
-        outdir = QFileDialog.getExistingDirectory(self, "Chọn thư mục output", self.get_output())
-        if not outdir:
-            outdir = self.get_output()
+        outdir = self.get_output()
         self.settings.setValue("last_openable_output", outdir)
         self.last_output_used = outdir
         try:
