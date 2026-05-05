@@ -10,8 +10,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Optional, Tuple
 
-from PySide6.QtCore import QSettings, Qt, QThread, Signal, QUrl
-from PySide6.QtGui import QDesktopServices
+from PySide6.QtCore import QSettings, Qt, QThread, Signal, QUrl, QPoint
+from PySide6.QtGui import QDesktopServices, QIcon, QPainter, QColor, QPixmap, QPolygon
 from PySide6.QtWidgets import (
     QApplication,
     QComboBox,
@@ -163,6 +163,32 @@ def fade_alpha_expr(curve: str, overlap_h: int) -> str:
     if curve == "strong":
         return f"255*pow(1-Y/{overlap_h},2)"
     return f"255*(1-Y/{overlap_h})"
+
+
+def make_colored_icon(kind: str, color: str) -> QIcon:
+    size = 20
+    pm = QPixmap(size, size)
+    pm.fill(Qt.transparent)
+    painter = QPainter(pm)
+    painter.setRenderHint(QPainter.Antialiasing)
+    painter.setBrush(QColor(color))
+    painter.setPen(Qt.NoPen)
+    if kind == "play":
+        pts = [QPoint(6, 4), QPoint(16, 10), QPoint(6, 16)]
+        painter.drawPolygon(QPolygon(pts))
+    elif kind == "pause":
+        painter.drawRoundedRect(5, 4, 4, 12, 1, 1)
+        painter.drawRoundedRect(11, 4, 4, 12, 1, 1)
+    elif kind == "image_plus":
+        painter.drawRoundedRect(3, 4, 14, 12, 2, 2)
+        painter.setBrush(QColor("#2e7d32"))
+        painter.drawEllipse(6, 7, 3, 3)
+        painter.setBrush(QColor(color))
+        painter.drawRect(14, 2, 4, 4)
+        painter.drawRect(15, 1, 2, 6)
+        painter.drawRect(12, 4, 8, 2)
+    painter.end()
+    return QIcon(pm)
 
 
 class Worker(QThread):
@@ -358,11 +384,11 @@ class MainWindow(QMainWindow):
         st = self.style()
         self.btn_add_video.setIcon(st.standardIcon(QStyle.SP_FileDialogNewFolder))
         self.btn_remove_video.setIcon(st.standardIcon(QStyle.SP_TrashIcon))
-        self.btn_add_image.setIcon(st.standardIcon(QStyle.SP_FileIcon))
+        self.btn_add_image.setIcon(make_colored_icon("image_plus", "#1976d2"))
         self.btn_remove_image.setIcon(st.standardIcon(QStyle.SP_TrashIcon))
         self.btn_pick_output.setIcon(st.standardIcon(QStyle.SP_DirOpenIcon))
-        self.btn_start.setIcon(st.standardIcon(QStyle.SP_MediaPlay))
-        self.btn_stop.setIcon(st.standardIcon(QStyle.SP_MediaPause))
+        self.btn_start.setIcon(make_colored_icon("play", "#00c853"))
+        self.btn_stop.setIcon(make_colored_icon("pause", "#ffab00"))
         self.btn_kill.setIcon(st.standardIcon(QStyle.SP_BrowserStop))
         self.btn_output.setIcon(st.standardIcon(QStyle.SP_DialogOpenButton))
         self.btn_help.setIcon(st.standardIcon(QStyle.SP_MessageBoxInformation))
