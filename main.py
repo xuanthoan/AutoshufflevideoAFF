@@ -239,8 +239,11 @@ class Worker(QThread):
             ov = min(ov, ih)
             visible_video_total = H - (ih - ov)
             offset_y = -(H - visible_video_total)
-            fade_start = H - ih
-            source_y = fade_start - offset_y
+            image_top = H - ih
+            fade_start = image_top
+            source_main_y = max(0, int(-offset_y))
+            main_video_h = max(1, int(visible_video_total - ov))
+            source_y = max(0, int(image_top - offset_y))
             alpha = fade_alpha_expr(self.settings.fade_curve, max(1, ov))
             crop_y = y_for_focus(self.settings.image_focus)
 
@@ -249,10 +252,11 @@ class Worker(QThread):
                 f"[1:v]scale={W}:-1,crop={W}:{ih}:0:{crop_y}[img];"
                 f"[0:v]setpts=PTS-STARTPTS[v];"
                 f"color=c=black:s={W}x{H}:d=1[base];"
-                f"[base][img]overlay=0:{H-ih}[l1];"
-                f"[l1][v]overlay=0:{offset_y}[l2];"
-                f"[v]crop={W}:{max(1,ov)}:0:{max(0,int(source_y))},format=yuva420p,geq=lum='p(X,Y)':a='{alpha}'[fade];"
-                f"[l2][fade]overlay=0:{fade_start}[outv]"
+                f"[base][img]overlay=0:{image_top}[base_img];"
+                f"[v]crop={W}:{main_video_h}:0:{source_main_y}[v_main];"
+                f"[base_img][v_main]overlay=0:0[tmp];"
+                f"[v]crop={W}:{max(1,ov)}:0:{source_y},format=yuva420p,geq=lum='p(X,Y)':a='{alpha}'[fade];"
+                f"[tmp][fade]overlay=0:{fade_start}[outv]"
             )
             self.runner.run([
                 self.ffmpeg_bin, "-y", "-i", str(shuffled), "-loop", "1", "-i", str(image),
