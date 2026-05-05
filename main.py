@@ -274,7 +274,14 @@ class Worker(QThread):
             shuffled = td / "shuffled.mp4"
             self.runner.run([self.ffmpeg_bin, "-y", "-f", "concat", "-safe", "0", "-i", str(lst), "-c", "copy", str(shuffled)], step_name="Ghép segment")
 
-            W, H = ffprobe_size(self.ffprobe_bin, shuffled)
+            duration_shuffled = ffprobe_duration(self.ffprobe_bin, shuffled)
+            normalized = td / "normalized.mp4"
+            self.runner.run([
+                self.ffmpeg_bin, "-y", "-fflags", "+genpts", "-i", str(shuffled),
+                "-an", "-vf", "setpts=PTS-STARTPTS", "-vsync", "2", "-c:v", "libx264", "-preset", "veryfast", "-crf", "18", str(normalized)
+            ], step_name="Chuẩn hoá timestamp video")
+
+            W, H = ffprobe_size(self.ffprobe_bin, normalized)
             ih = int(round(self.settings.image_height_percent / 100.0 * H))
             ov = int(round(self.settings.overlap_percent / 100.0 * H))
             ov = min(ov, ih)
@@ -290,21 +297,21 @@ class Worker(QThread):
             fc = (
                 f"[1:v]loop=loop=-1:size=1:start=0,setpts=PTS-STARTPTS,scale={W}:-1,crop={W}:{ih}:0:{crop_y}[img];"
                 f"[0:v]setpts=PTS-STARTPTS,split=2[v_main_src][v_fade_src];"
-                f"color=c=black:s={W}x{H}:d=1[base];"
-                f"[base][img]overlay=0:{image_top}:shortest=1[base_img];"
-                f"[base][v_main_src]overlay=0:{offset_y}:shortest=1[vp_main];"
+                f"color=c=black:s={W}x{H}:d={duration_shuffled:.3f}[base];"
+                f"[base][img]overlay=0:{image_top}[base_img];"
+                f"[base][v_main_src]overlay=0:{offset_y}[vp_main];"
                 f"[vp_main]crop={W}:{main_video_h}:0:0[v_main];"
-                f"[base_img][v_main]overlay=0:0:shortest=1[tmp];"
-                f"[base][v_fade_src]overlay=0:{offset_y}:shortest=1[vp_fade];"
+                f"[base_img][v_main]overlay=0:0[tmp];"
+                f"[base][v_fade_src]overlay=0:{offset_y}[vp_fade];"
                 f"[vp_fade]crop={W}:{max(1,ov)}:0:{image_top},format=yuv420p[fade_crop];"
                 f"color=white:s={W}x{max(1,ov)}:d=1,format=gray,geq=lum='{alpha}'[mask_gray];"
                 f"[fade_crop][mask_gray]alphamerge[fade];"
                 f"[tmp][fade]overlay=0:{fade_start}:shortest=1[outv]"
             )
             self.runner.run([
-                self.ffmpeg_bin, "-y", "-fflags", "+genpts", "-threads", "0", "-filter_threads", "0", "-i", str(shuffled), "-loop", "1", "-i", str(image),
+                self.ffmpeg_bin, "-y", "-fflags", "+genpts", "-threads", "0", "-filter_threads", "0", "-i", str(normalized), "-loop", "1", "-i", str(image),
                 "-filter_complex", fc,
-                "-map", "[outv]", "-t", f"{ffprobe_duration(self.ffprobe_bin, shuffled):.3f}",
+                "-map", "[outv]", "-t", f"{duration_shuffled:.3f}",
                 "-vsync", "2", "-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-g", "1", "-pix_fmt", "yuv420p", "-shortest", str(composed)
             ], step_name="Composite video + ảnh + fade")
 
