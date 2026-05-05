@@ -143,6 +143,18 @@ class ProcessRunner:
             raise RuntimeError(f"Lệnh lỗi: {' '.join(cmd)}\n{tail}")
 
 
+def unique_output_path(base_dir: Path, base_name: str, suffix: str = ".mp4") -> Path:
+    candidate = base_dir / f"{base_name}{suffix}"
+    if not candidate.exists():
+        return candidate
+    idx = 1
+    while True:
+        candidate = base_dir / f"{base_name}_{idx}{suffix}"
+        if not candidate.exists():
+            return candidate
+        idx += 1
+
+
 def ffprobe_size(ffprobe_bin: str, video: Path) -> Tuple[int, int]:
     cmd = [ffprobe_bin, "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height", "-of", "json", str(video)]
     out = run_capture(cmd)
@@ -272,7 +284,7 @@ class Worker(QThread):
         stem = video.stem
         safe_stem = "".join(ch if ch.isalnum() or ch in "-_" else "_" for ch in stem).strip("_") or "video"
         self.outdir.mkdir(parents=True, exist_ok=True)
-        out_final = self.outdir / f"{safe_stem}_processed.mp4"
+        out_final = unique_output_path(self.outdir, f"{safe_stem}_processed", ".mp4")
         with tempfile.TemporaryDirectory(prefix="autosf_") as td:
             td = Path(td)
             audio = td / "audio.aac"
