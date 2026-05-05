@@ -44,6 +44,21 @@ VIDEO_EXTS = {".mp4", ".mov", ".avi", ".mkv"}
 IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp", ".bmp"}
 
 
+def _no_window_kwargs() -> dict:
+    if os.name != "nt":
+        return {}
+    si = subprocess.STARTUPINFO()
+    si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+    return {
+        "creationflags": subprocess.CREATE_NO_WINDOW,
+        "startupinfo": si,
+    }
+
+
+def run_capture(cmd: List[str]) -> str:
+    return subprocess.check_output(cmd, text=True, **_no_window_kwargs())
+
+
 def resolve_tool_binary(tool_name: str) -> str:
     candidates = []
     exe_name = f"{tool_name}.exe" if os.name == "nt" else tool_name
@@ -99,10 +114,7 @@ class ProcessRunner:
             "cwd": str(cwd) if cwd else None,
         }
         if os.name == "nt":
-            popen_kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
-            si = subprocess.STARTUPINFO()
-            si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-            popen_kwargs["startupinfo"] = si
+            popen_kwargs.update(_no_window_kwargs())
         p = subprocess.Popen(cmd, **popen_kwargs)
         self.running.append(p)
         lines = []
@@ -133,7 +145,7 @@ class ProcessRunner:
 
 def ffprobe_size(ffprobe_bin: str, video: Path) -> Tuple[int, int]:
     cmd = [ffprobe_bin, "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height", "-of", "json", str(video)]
-    out = subprocess.check_output(cmd, text=True)
+    out = run_capture(cmd)
     data = json.loads(out)
     s = data["streams"][0]
     return int(s["width"]), int(s["height"])
@@ -166,13 +178,13 @@ def fallback_segments(duration: float) -> List[Tuple[float, float]]:
 
 def has_audio_stream(ffprobe_bin: str, video: Path) -> bool:
     cmd = [ffprobe_bin, "-v", "error", "-select_streams", "a", "-show_entries", "stream=index", "-of", "csv=p=0", str(video)]
-    out = subprocess.check_output(cmd, text=True).strip()
+    out = run_capture(cmd).strip()
     return bool(out)
 
 
 def ffprobe_duration(ffprobe_bin: str, video: Path) -> float:
     cmd = [ffprobe_bin, "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", str(video)]
-    return float(subprocess.check_output(cmd, text=True).strip())
+    return float(run_capture(cmd).strip())
 
 
 def y_for_focus(focus: str) -> str:
