@@ -92,7 +92,18 @@ class ProcessRunner:
         if step_name:
             self.log_cb(f"▶ {step_name}")
         self.log_cb("   ↳ " + " ".join(cmd[:6]) + (" ..." if len(cmd) > 6 else ""))
-        p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, cwd=str(cwd) if cwd else None)
+        popen_kwargs = {
+            "stdout": subprocess.PIPE,
+            "stderr": subprocess.STDOUT,
+            "text": True,
+            "cwd": str(cwd) if cwd else None,
+        }
+        if os.name == "nt":
+            popen_kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
+            si = subprocess.STARTUPINFO()
+            si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+            popen_kwargs["startupinfo"] = si
+        p = subprocess.Popen(cmd, **popen_kwargs)
         self.running.append(p)
         lines = []
         progress_tick = 0
