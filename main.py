@@ -91,14 +91,23 @@ class ProcessRunner:
             raise RuntimeError("Đã dừng bởi người dùng")
         if step_name:
             self.log_cb(f"▶ {step_name}")
+        self.log_cb("   ↳ " + " ".join(cmd[:6]) + (" ..." if len(cmd) > 6 else ""))
         p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, cwd=str(cwd) if cwd else None)
         self.running.append(p)
         lines = []
+        progress_tick = 0
         try:
             for line in p.stdout:
-                if len(lines) > 30:
+                txt = line.rstrip()
+                if len(lines) > 80:
                     lines.pop(0)
-                lines.append(line.rstrip())
+                lines.append(txt)
+                if "time=" in txt or "frame=" in txt or "speed=" in txt:
+                    progress_tick += 1
+                    if progress_tick % 30 == 0:
+                        self.log_cb("   ... " + txt[:180])
+                elif "Error" in txt or "Invalid" in txt:
+                    self.log_cb("   ! " + txt[:180])
                 if self.stop_flag() and p.poll() is None:
                     p.kill()
                     raise RuntimeError("Đã dừng bởi người dùng")
@@ -518,6 +527,14 @@ HƯỚNG DẪN SỬ DỤNG:
 4) Thiết lập thông số: độ nhạy scene, crop ảnh, chiều cao ảnh, overlap, kiểu fade.
 5) Bấm 'Bắt đầu' để chạy batch. Có thể bấm 'Dừng' hoặc 'Kết thúc' để ngắt tiến trình.
 6) Bấm 'Mở thư mục output' để mở thư mục chứa video đã xử lý.
+
+ĐIỀU KIỆN CẦN:
+- Bắt buộc có ffmpeg.exe và ffprobe.exe nằm trong cùng thư mục chạy phần mềm/dự án.
+
+CÁCH TẢI ffmpeg.exe / ffprobe.exe:
+1) Truy cập trang chính thức: https://ffmpeg.org/download.html
+2) Chọn bản Windows build (gợi ý: gyan.dev hoặc BtbN builds).
+3) Giải nén và copy ffmpeg.exe + ffprobe.exe vào cùng thư mục với main.py hoặc file .exe của phần mềm.
 
 QUY TRÌNH XỬ LÝ:
 - Tách audio từ video đầu vào.
